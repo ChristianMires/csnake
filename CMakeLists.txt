@@ -1,6 +1,6 @@
 # root CMakeLists.txt
 cmake_minimum_required(VERSION 3.16)
-project(SDL3-test LANGUAGES C)
+project(csnake LANGUAGES C)
 
 # set the output directory for built objects.
 # This makes sure tha the dynamic library goes into the build directory automatically.
