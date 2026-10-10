@@ -1,4 +1,3 @@
-#define DEBUG 1
 #define SDL_MAIN_USE_CALLBACKS 1
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -20,10 +19,12 @@ static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
 
 static unsigned int score = 0, highScore = 0;
+static char scoreText[16];
+static char highScoreText[16];
 
 static int direction = NONE;
 static Uint64 lastTime = 0, currentTime;
-static double speed = 0.5;
+static double speed = 0.5f;
 
 static struct point {
 	int state;
@@ -33,6 +34,7 @@ static struct point {
 int headPos[] = { GRID_X / 2, GRID_Y / 2};
 
 void generateNewEgg();
+void resetGame();
 
 void generateNewEgg()
 {
@@ -41,12 +43,36 @@ void generateNewEgg()
 	eggPos[1] = SDL_rand(GRID_Y);
 	while (grid[eggPos[0]][eggPos[1]].state == HEAD || 
 			grid[eggPos[0]][eggPos[1]].state == TAIL) {
-		eggPos[0] = SDL_rand(GRID_X);
-		eggPos[1] = SDL_rand(GRID_Y);
+		eggPos[0] = SDL_rand(GRID_X-1);
+		eggPos[1] = SDL_rand(GRID_Y-1);
 	}
 	grid[eggPos[0]][eggPos[1]].state = EGG;
 	grid[eggPos[0]][eggPos[1]].lifespan = -1;
 }
+
+void resetGame()
+{
+	/* reset all variables except highScore */
+	direction = NONE;
+	speed = 0.5f;
+	headPos[0] = GRID_X / 2;
+	headPos[1] = GRID_Y / 2;
+	score = 0;
+
+	int i, j;
+	for (i=0; i<GRID_X; i++) {
+		for (j=0; j<GRID_Y; j++) {
+			grid[i][j].state = EMPTY; // empty all points
+			grid[i][j].lifespan = score;
+		}
+	}
+
+	grid[headPos[0]][headPos[1]].state = HEAD;	// set initial head point
+	grid[headPos[0]][headPos[1]].lifespan = -1;	// set initial head point
+
+	generateNewEgg();				// gen initial egg
+}
+
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
@@ -76,7 +102,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 	}
 	SDL_SetRenderLogicalPresentation(renderer, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_LOGICAL_PRESENTATION_LETTERBOX);
 
+#ifdef DEBUG
 	SDL_Log("App initialized");
+#endif
 	return SDL_APP_CONTINUE;
 }
 
@@ -112,15 +140,19 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 		switch (direction) {
 			case UP:
 				nextPos[1]--;
+				if (nextPos[1] < 0) nextPos[1] = GRID_Y-1;
 				break;
 			case DOWN:
 				nextPos[1]++;
+				if (nextPos[1] > GRID_Y-1) nextPos[1] = 0;
 				break;
 			case LEFT:
 				nextPos[0]--;
+				if (nextPos[0] < 0) nextPos[0] = GRID_X-1;
 				break;
 			case RIGHT:
 				nextPos[0]++;
+				if (nextPos[0] > GRID_X-1) nextPos[0] = 0;
 				break;
 		}
 
@@ -141,11 +173,14 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 		// detect collisions
 		switch (grid[nextPos[0]][nextPos[1]].state) {
 			case TAIL:
-				return SDL_APP_SUCCESS;
+				resetGame();
 				break;
 			case EGG:
 				score++;
-				speed*=0.98;
+				if (score > highScore) highScore = score;
+				SDL_snprintf(scoreText, 16, "SCORE: %u", score);
+				SDL_snprintf(highScoreText, 16, "HIGH: %u", highScore);
+				speed*=0.98f;
 				generateNewEgg();
 			case EMPTY:
 				grid[headPos[0]][headPos[1]].state = TAIL;
@@ -191,11 +226,18 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 		}
 	}
 
+	
+	SDL_SetRenderDrawColor(renderer, 255, 255, 255, 180);
+	SDL_RenderDebugText(renderer, 10.0f, 10.0f, scoreText);
+	SDL_RenderDebugText(renderer, 10.0f, 20.0f, highScoreText);
+
 	SDL_RenderPresent(renderer);
 	return SDL_APP_CONTINUE;
 }
 
 void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
+#ifdef DEBUG
 	SDL_Log("App executed");
+#endif
 }
