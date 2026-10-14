@@ -1,3 +1,4 @@
+#define DEBUG 1
 #define SDL_MAIN_USE_CALLBACKS 1
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -43,8 +44,8 @@ void generateNewEgg()
 	eggPos[1] = SDL_rand(GRID_Y);
 	while (grid[eggPos[0]][eggPos[1]].state == HEAD || 
 			grid[eggPos[0]][eggPos[1]].state == TAIL) {
-		eggPos[0] = SDL_rand(GRID_X-1);
-		eggPos[1] = SDL_rand(GRID_Y-1);
+		eggPos[0] = SDL_rand(GRID_X);
+		eggPos[1] = SDL_rand(GRID_Y);
 	}
 	grid[eggPos[0]][eggPos[1]].state = EGG;
 	grid[eggPos[0]][eggPos[1]].lifespan = -1;
@@ -163,7 +164,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 					grid[i][j].lifespan--;
 					if (grid[i][j].lifespan <= 0) {
 						grid[i][j].state = EMPTY;
-						grid[i][j].lifespan == -1;
+						grid[i][j].lifespan = -1;
 					}
 				}
 			}
@@ -181,6 +182,9 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 				SDL_snprintf(scoreText, 16, "SCORE: %u", score);
 				SDL_snprintf(highScoreText, 16, "HIGH: %u", highScore);
 				speed*=0.98f;
+#ifdef DEBUG
+				SDL_Log("Speed = %f\n", speed);
+#endif
 				generateNewEgg();
 			case EMPTY:
 				grid[headPos[0]][headPos[1]].state = TAIL;
@@ -203,7 +207,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 
 	// Draw egg, head, and tail tiles
 	for (i=0; i<GRID_X; i++) {
-		for (j=0; j<GRID_X; j++) {
+		for (j=0; j<GRID_Y; j++) {
 			switch (grid[i][j].state) {
 				case HEAD: {
 					SDL_SetRenderDrawColor(renderer, 0xBB, 0xCC, 0xDE, SDL_ALPHA_OPAQUE);
