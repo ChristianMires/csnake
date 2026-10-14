@@ -13,8 +13,9 @@
 #define POINT_HEIGHT SCREEN_HEIGHT / GRID_Y
 
 /* global variables */
-enum POINT_STATE { EMPTY, HEAD, TAIL, EGG };
-enum DIRECTION   { NONE, UP, DOWN, LEFT, RIGHT };
+enum POINT_STATE	{ EMPTY, HEAD, TAIL, EGG };
+enum DIRECTION		{ NONE, UP, DOWN, LEFT, RIGHT };
+enum GAME_STATES	{ PAUSED, IN_PROGRESS, WIN };
 
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
@@ -24,6 +25,7 @@ static char scoreText[16];
 static char highScoreText[16];
 
 static int direction = NONE;
+static int gamestate = IN_PROGRESS;
 static Uint64 lastTime = 0, currentTime;
 static double speed = 0.5f;
 
@@ -35,6 +37,7 @@ static struct point {
 int headPos[] = { GRID_X / 2, GRID_Y / 2};
 
 void generateNewEgg();
+void pause();
 void resetGame();
 
 void generateNewEgg()
@@ -51,9 +54,20 @@ void generateNewEgg()
 	grid[eggPos[0]][eggPos[1]].lifespan = -1;
 }
 
+void pause()
+{
+	if (gamestate == IN_PROGRESS) {
+		gamestate = PAUSED;
+	}
+	else if (gamestate == PAUSED) {
+		gamestate = IN_PROGRESS;
+	}
+}
+
 void resetGame()
 {
 	/* reset all variables except highScore */
+	gamestate = IN_PROGRESS;
 	direction = NONE;
 	speed = 0.5f;
 	headPos[0] = GRID_X / 2;
@@ -120,6 +134,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 			if (scancode == SDL_SCANCODE_A || scancode==SDL_SCANCODE_LEFT) direction = LEFT;
 			if (scancode == SDL_SCANCODE_S || scancode==SDL_SCANCODE_DOWN) direction = DOWN;
 			if (scancode == SDL_SCANCODE_D || scancode==SDL_SCANCODE_RIGHT) direction = RIGHT;
+			if (scancode == SDL_SCANCODE_P) pause();
 			break;
 		}
 	}
@@ -134,70 +149,68 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 	// add event when head collides with body. Game ends. All states, pos, speed reset.
 	currentTime = SDL_GetTicks();
 	if (currentTime == lastTime + (Uint64)(1000*speed)) {
-		// determine next position in grid
-		int nextPos[2];
-		nextPos[0] = headPos[0];
-		nextPos[1] = headPos[1];
-		switch (direction) {
-			case UP:
-				nextPos[1]--;
-				if (nextPos[1] < 0) nextPos[1] = GRID_Y-1;
-				break;
-			case DOWN:
-				nextPos[1]++;
-				if (nextPos[1] > GRID_Y-1) nextPos[1] = 0;
-				break;
-			case LEFT:
-				nextPos[0]--;
-				if (nextPos[0] < 0) nextPos[0] = GRID_X-1;
-				break;
-			case RIGHT:
-				nextPos[0]++;
-				if (nextPos[0] > GRID_X-1) nextPos[0] = 0;
-				break;
-		}
+		if (gamestate == IN_PROGRESS) {
+			// determine next position in grid
+			int nextPos[2];
+			nextPos[0] = headPos[0];
+			nextPos[1] = headPos[1];
+			switch (direction) {
+				case UP:
+					nextPos[1]--;
+					if (nextPos[1] < 0) nextPos[1] = GRID_Y-1;
+					break;
+				case DOWN:
+					nextPos[1]++;
+					if (nextPos[1] > GRID_Y-1) nextPos[1] = 0;
+					break;
+				case LEFT:
+					nextPos[0]--;
+					if (nextPos[0] < 0) nextPos[0] = GRID_X-1;
+					break;
+				case RIGHT:
+					nextPos[0]++;
+					if (nextPos[0] > GRID_X-1) nextPos[0] = 0;
+					break;
+			}
 
-		// Decrement tail unit lifespans. destroy tail end once lifespan runs out (based on score)
-		for (i=0; i<GRID_X; i++) {
-			for (j=0; j<GRID_Y; j++) {
-				if (grid[i][j].state == TAIL) {
-					grid[i][j].lifespan--;
-					if (grid[i][j].lifespan <= 0) {
-						grid[i][j].state = EMPTY;
-						grid[i][j].lifespan = -1;
+			// Decrement tail unit lifespans. destroy tail end once lifespan runs out (based on score)
+			for (i=0; i<GRID_X; i++) {
+				for (j=0; j<GRID_Y; j++) {
+					if (grid[i][j].state == TAIL) {
+						grid[i][j].lifespan--;
+						if (grid[i][j].lifespan <= 0) {
+							grid[i][j].state = EMPTY;
+							grid[i][j].lifespan = -1;
+						}
 					}
 				}
 			}
+
+
+			// detect collisions
+			switch (grid[nextPos[0]][nextPos[1]].state) {
+				case TAIL:
+					resetGame();
+					break;
+				case EGG:
+					score++;
+					if (score > highScore) highScore = score;
+					SDL_snprintf(scoreText, 16, "SCORE: %u", score);
+					SDL_snprintf(highScoreText, 16, "HIGH: %u", highScore);
+					speed*=0.98f;
+					generateNewEgg();
+				case EMPTY:
+					grid[headPos[0]][headPos[1]].state = TAIL;
+					grid[headPos[0]][headPos[1]].lifespan = score;
+					headPos[0] = nextPos[0];
+					headPos[1] = nextPos[1];
+					grid[headPos[0]][headPos[1]].state = HEAD;
+					grid[headPos[0]][headPos[1]].lifespan = -1;
+					break;
+			}
 		}
-
-
-		// detect collisions
-		switch (grid[nextPos[0]][nextPos[1]].state) {
-			case TAIL:
-				resetGame();
-				break;
-			case EGG:
-				score++;
-				if (score > highScore) highScore = score;
-				SDL_snprintf(scoreText, 16, "SCORE: %u", score);
-				SDL_snprintf(highScoreText, 16, "HIGH: %u", highScore);
-				speed*=0.98f;
 #ifdef DEBUG
-				SDL_Log("Speed = %f\n", speed);
-#endif
-				generateNewEgg();
-			case EMPTY:
-				grid[headPos[0]][headPos[1]].state = TAIL;
-				grid[headPos[0]][headPos[1]].lifespan = score;
-				headPos[0] = nextPos[0];
-				headPos[1] = nextPos[1];
-				grid[headPos[0]][headPos[1]].state = HEAD;
-				grid[headPos[0]][headPos[1]].lifespan = -1;
-				break;
-		}
-
-#ifdef DEBUG
-		SDL_Log("Direction: %i", direction);
+		SDL_Log("Direction: %i\nSpeed: %f", direction, speed);
 #endif
 		lastTime = currentTime;
 	}
