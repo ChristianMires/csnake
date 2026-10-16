@@ -27,6 +27,7 @@ static char statusText[20];
 
 static int direction = NONE;
 static int gamestate = START;
+static int eggEaten  = 0;
 static Uint64 lastTime = 0, currentTime;
 static double speed = 0.5f;
 
@@ -37,10 +38,21 @@ static struct point {
 
 int headPos[] = { GRID_X / 2, GRID_Y / 2};
 
+void eatEgg();
 void generateNewEgg();
 void togglePause();
 void resetGame();
 void win();
+
+void eatEgg()
+{
+	score++;
+	eggEaten = 1;
+	if (score > highScore) highScore = score;
+	SDL_snprintf(scoreText, 16, "SCORE: %u", score);
+	SDL_snprintf(highScoreText, 16, "HIGH: %u", highScore);
+	if (speed >= 0.2f) speed *= 0.99f;
+}
 
 void generateNewEgg()
 {
@@ -73,6 +85,7 @@ void resetGame()
 	/* reset all variables except highScore */
 	SDL_strlcpy(statusText, "WAITING FOR PLAYER", 20);
 	gamestate = START;
+	eggEaten = 0;
 	direction = NONE;
 	speed = 0.5f;
 	headPos[0] = GRID_X / 2;
@@ -133,6 +146,11 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 			return SDL_APP_SUCCESS;
 		case SDL_EVENT_KEY_DOWN: {
 			SDL_Scancode scancode = event->key.scancode;
+
+			/* global keys */
+			if (scancode == SDL_SCANCODE_P) togglePause();
+			if (scancode == SDL_SCANCODE_Q) return SDL_APP_SUCCESS;
+
 			switch (gamestate) {
 				case WIN:
 					switch (scancode) {
@@ -157,10 +175,9 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 					if (scancode == SDL_SCANCODE_A || scancode == SDL_SCANCODE_LEFT) direction = LEFT;
 					if (scancode == SDL_SCANCODE_S || scancode == SDL_SCANCODE_DOWN) direction = DOWN;
 					if (scancode == SDL_SCANCODE_D || scancode == SDL_SCANCODE_RIGHT) direction = RIGHT;
-				default:
-					if (scancode == SDL_SCANCODE_P) togglePause();
 					break;
-
+				case PAUSED:
+					break;
 			}
 		}
 	}
@@ -220,12 +237,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 					resetGame();
 					break;
 				case EGG:
-					score++;
-					if (score > highScore) highScore = score;
-					SDL_snprintf(scoreText, 16, "SCORE: %u", score);
-					SDL_snprintf(highScoreText, 16, "HIGH: %u", highScore);
-					if (speed >= 0.2f) speed *= 0.99f;
-					generateNewEgg();
+					eatEgg();
 				case EMPTY:
 					grid[headPos[0]][headPos[1]].state = TAIL;
 					grid[headPos[0]][headPos[1]].lifespan = score;
@@ -234,6 +246,10 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 					grid[headPos[0]][headPos[1]].state = HEAD;
 					grid[headPos[0]][headPos[1]].lifespan = -1;
 					break;
+			}
+			if (eggEaten) {
+				generateNewEgg();
+				eggEaten = 0;
 			}
 
 			if (score >= GRID_X * GRID_Y) {
@@ -277,7 +293,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 	SDL_SetRenderDrawColor(renderer, 255, 255, 255, 180);
 	SDL_RenderDebugText(renderer, 10.0f, 10.0f, scoreText);
 	SDL_RenderDebugText(renderer, 10.0f, 20.0f, highScoreText);
-	SDL_RenderDebugText(renderer, SCREEN_WIDTH - 150.0f, 10.0f, statusText);
+	SDL_RenderDebugText(renderer, 10.0f, 30.0f, statusText);
 
 	SDL_RenderPresent(renderer);
 	return SDL_APP_CONTINUE;
