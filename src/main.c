@@ -15,7 +15,7 @@
 /* global variables */
 enum POINT_STATE	{ EMPTY, HEAD, TAIL, EGG };
 enum DIRECTION		{ NONE, UP, DOWN, LEFT, RIGHT };
-enum GAME_STATES	{ PAUSED, IN_PROGRESS, WIN };
+enum GAME_STATES	{ START, PAUSED, IN_PROGRESS, WIN };
 
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
@@ -23,9 +23,10 @@ static SDL_Renderer *renderer = NULL;
 static unsigned int score = 0, highScore = 0;
 static char scoreText[16];
 static char highScoreText[16];
+static char statusText[20];
 
 static int direction = NONE;
-static int gamestate = IN_PROGRESS;
+static int gamestate = START;
 static Uint64 lastTime = 0, currentTime;
 static double speed = 0.5f;
 
@@ -37,8 +38,9 @@ static struct point {
 int headPos[] = { GRID_X / 2, GRID_Y / 2};
 
 void generateNewEgg();
-void pause();
+void togglePause();
 void resetGame();
+void win();
 
 void generateNewEgg()
 {
@@ -54,20 +56,23 @@ void generateNewEgg()
 	grid[eggPos[0]][eggPos[1]].lifespan = -1;
 }
 
-void pause()
+void togglePause()
 {
 	if (gamestate == IN_PROGRESS) {
 		gamestate = PAUSED;
+		SDL_strlcpy(statusText, "PAUSED", 20);
 	}
 	else if (gamestate == PAUSED) {
 		gamestate = IN_PROGRESS;
+		SDL_strlcpy(statusText, "", 20);
 	}
 }
 
 void resetGame()
 {
 	/* reset all variables except highScore */
-	gamestate = IN_PROGRESS;
+	SDL_strlcpy(statusText, "WAITING FOR PLAYER", 20);
+	gamestate = START;
 	direction = NONE;
 	speed = 0.5f;
 	headPos[0] = GRID_X / 2;
@@ -78,7 +83,7 @@ void resetGame()
 	for (i=0; i<GRID_X; i++) {
 		for (j=0; j<GRID_Y; j++) {
 			grid[i][j].state = EMPTY; // empty all points
-			grid[i][j].lifespan = score;
+			grid[i][j].lifespan = -1;
 		}
 	}
 
@@ -88,22 +93,19 @@ void resetGame()
 	generateNewEgg();				// gen initial egg
 }
 
+void win()
+{
+	gamestate = WIN;
+	direction = NONE;
+	SDL_strlcpy(statusText, "YOU WIN!", 20);
+}
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
 	/* Initialize game variables */
-	int i, j;
-	for (i=0; i<GRID_X; i++) {
-		for (j=0; j<GRID_Y; j++) {
-			grid[i][j].state = EMPTY; // empty all points
-			grid[i][j].lifespan = score;
-		}
-	}
-
-	grid[headPos[0]][headPos[1]].state = HEAD;	// set initial head point
-	grid[headPos[0]][headPos[1]].lifespan = -1;	// set initial head point
-
-	generateNewEgg();				// gen initial egg
+	resetGame();
+	SDL_snprintf(scoreText, 16, "SCORE: %u", score);
+	SDL_snprintf(highScoreText, 16, "HIGH: %u", highScore);
 
 	/* SDL Initialization */
 	if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -115,6 +117,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 		SDL_Log("Couldn't create window/renderer: %s", SDL_GetError());
 		return SDL_APP_FAILURE;
 	}
+	SDL_SetRenderVSync(renderer, 1);
 	SDL_SetRenderLogicalPresentation(renderer, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_LOGICAL_PRESENTATION_LETTERBOX);
 
 #ifdef DEBUG
@@ -130,12 +133,35 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 			return SDL_APP_SUCCESS;
 		case SDL_EVENT_KEY_DOWN: {
 			SDL_Scancode scancode = event->key.scancode;
-			if (scancode == SDL_SCANCODE_W || scancode==SDL_SCANCODE_UP) direction = UP;
-			if (scancode == SDL_SCANCODE_A || scancode==SDL_SCANCODE_LEFT) direction = LEFT;
-			if (scancode == SDL_SCANCODE_S || scancode==SDL_SCANCODE_DOWN) direction = DOWN;
-			if (scancode == SDL_SCANCODE_D || scancode==SDL_SCANCODE_RIGHT) direction = RIGHT;
-			if (scancode == SDL_SCANCODE_P) pause();
-			break;
+			switch (gamestate) {
+				case WIN:
+					switch (scancode) {
+						case SDL_SCANCODE_W:
+						case SDL_SCANCODE_A:
+						case SDL_SCANCODE_S:
+						case SDL_SCANCODE_D:
+						case SDL_SCANCODE_UP:
+						case SDL_SCANCODE_DOWN:
+						case SDL_SCANCODE_LEFT:
+						case SDL_SCANCODE_RIGHT:
+						case SDL_SCANCODE_P:
+							resetGame();
+							break;
+					}
+					break;
+				case START:
+					SDL_strlcpy(statusText, "", 20);
+					gamestate = IN_PROGRESS;
+				case IN_PROGRESS:
+					if (scancode == SDL_SCANCODE_W || scancode == SDL_SCANCODE_UP) direction = UP;
+					if (scancode == SDL_SCANCODE_A || scancode == SDL_SCANCODE_LEFT) direction = LEFT;
+					if (scancode == SDL_SCANCODE_S || scancode == SDL_SCANCODE_DOWN) direction = DOWN;
+					if (scancode == SDL_SCANCODE_D || scancode == SDL_SCANCODE_RIGHT) direction = RIGHT;
+				default:
+					if (scancode == SDL_SCANCODE_P) togglePause();
+					break;
+
+			}
 		}
 	}
 
@@ -147,8 +173,9 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 	int i, j;
 	// add event when snake eats egg. Snake grows. Speed increases.
 	// add event when head collides with body. Game ends. All states, pos, speed reset.
+
 	currentTime = SDL_GetTicks();
-	if (currentTime == lastTime + (Uint64)(1000*speed)) {
+	if (currentTime >= lastTime + (Uint64)(1000*speed)) {
 		if (gamestate == IN_PROGRESS) {
 			// determine next position in grid
 			int nextPos[2];
@@ -197,7 +224,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 					if (score > highScore) highScore = score;
 					SDL_snprintf(scoreText, 16, "SCORE: %u", score);
 					SDL_snprintf(highScoreText, 16, "HIGH: %u", highScore);
-					speed*=0.98f;
+					if (speed >= 0.2f) speed *= 0.99f;
 					generateNewEgg();
 				case EMPTY:
 					grid[headPos[0]][headPos[1]].state = TAIL;
@@ -207,6 +234,10 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 					grid[headPos[0]][headPos[1]].state = HEAD;
 					grid[headPos[0]][headPos[1]].lifespan = -1;
 					break;
+			}
+
+			if (score >= GRID_X * GRID_Y) {
+				win();
 			}
 		}
 #ifdef DEBUG
@@ -242,11 +273,11 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 			}
 		}
 	}
-
 	
 	SDL_SetRenderDrawColor(renderer, 255, 255, 255, 180);
 	SDL_RenderDebugText(renderer, 10.0f, 10.0f, scoreText);
 	SDL_RenderDebugText(renderer, 10.0f, 20.0f, highScoreText);
+	SDL_RenderDebugText(renderer, SCREEN_WIDTH - 150.0f, 10.0f, statusText);
 
 	SDL_RenderPresent(renderer);
 	return SDL_APP_CONTINUE;
