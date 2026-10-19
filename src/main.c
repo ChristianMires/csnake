@@ -1,4 +1,3 @@
-#define DEBUG 1
 #define SDL_MAIN_USE_CALLBACKS 1
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -12,13 +11,16 @@
 #define POINT_WIDTH SCREEN_WIDTH / GRID_X
 #define POINT_HEIGHT SCREEN_HEIGHT / GRID_Y
 
-/* global variables */
+/* Global variables. */
+
+/* SDL-specific vars. */
+static SDL_Window *window = NULL;
+static SDL_Renderer *renderer = NULL;
+
+/* Game-specific vars. */
 enum POINT_STATE	{ EMPTY, HEAD, TAIL, EGG };
 enum DIRECTION		{ NONE, UP, DOWN, LEFT, RIGHT };
 enum GAME_STATES	{ START, PAUSED, IN_PROGRESS, WIN };
-
-static SDL_Window *window = NULL;
-static SDL_Renderer *renderer = NULL;
 
 static unsigned int score = 0, highScore = 0;
 static char scoreText[16];
@@ -38,12 +40,14 @@ static struct point {
 
 int headPos[] = { GRID_X / 2, GRID_Y / 2};
 
+/* Function declarations */
 void eatEgg();
 void generateNewEgg();
 void togglePause();
 void resetGame();
 void win();
 
+/* Handle Snake's head collision with egg. */
 void eatEgg()
 {
 	score++;
@@ -54,6 +58,7 @@ void eatEgg()
 	if (speed >= 0.2f) speed *= 0.99f;
 }
 
+/* Happens after the egg is eaten. */
 void generateNewEgg()
 {
 	Sint32 eggPos[2];
@@ -68,6 +73,7 @@ void generateNewEgg()
 	grid[eggPos[0]][eggPos[1]].lifespan = -1;
 }
 
+/* Simply changes the game state depending on context. Effects are applied in game loop. */
 void togglePause()
 {
 	if (gamestate == IN_PROGRESS) {
@@ -80,6 +86,8 @@ void togglePause()
 	}
 }
 
+/* Called any time the board needs clearing. Beginning of game, after win or loss condition. */
+/* Ought to reset all variables except high score. */
 void resetGame()
 {
 	/* reset all variables except highScore */
@@ -95,17 +103,18 @@ void resetGame()
 	int i, j;
 	for (i=0; i<GRID_X; i++) {
 		for (j=0; j<GRID_Y; j++) {
-			grid[i][j].state = EMPTY; // empty all points
+			grid[i][j].state = EMPTY; // empty all tiles
 			grid[i][j].lifespan = -1;
 		}
 	}
 
-	grid[headPos[0]][headPos[1]].state = HEAD;	// set initial head point
-	grid[headPos[0]][headPos[1]].lifespan = -1;	// set initial head point
+	grid[headPos[0]][headPos[1]].state = HEAD;	// set initial head tile
+	grid[headPos[0]][headPos[1]].lifespan = -1;	
 
 	generateNewEgg();				// gen initial egg
 }
 
+/* Only changes to win state and all essential effects thereof. Any further input is handled elsewhere. */
 void win()
 {
 	gamestate = WIN;
@@ -113,6 +122,7 @@ void win()
 	SDL_strlcpy(statusText, "YOU WIN!", 20);
 }
 
+/* Functions SDL_AppInit, SDL_AppEvent, SDL_AppIterate, SDL_AppQuit inherent to SDL3 application if SDL_MAIN_USE_CALLBACKS set to 1. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
 	/* Initialize game variables */
@@ -147,10 +157,11 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 		case SDL_EVENT_KEY_DOWN: {
 			SDL_Scancode scancode = event->key.scancode;
 
-			/* global keys */
+			/* Global keys. */
 			if (scancode == SDL_SCANCODE_P) togglePause();
 			if (scancode == SDL_SCANCODE_Q) return SDL_APP_SUCCESS;
 
+			/* Wonder if there is a better way to change effect of input acc. to state... */
 			switch (gamestate) {
 				case WIN:
 					switch (scancode) {
@@ -188,13 +199,13 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
 	int i, j;
-	// add event when snake eats egg. Snake grows. Speed increases.
-	// add event when head collides with body. Game ends. All states, pos, speed reset.
 
+	/* Game speed changes acc. to score. Possible future iterations only increase snake speed. */
 	currentTime = SDL_GetTicks();
 	if (currentTime >= lastTime + (Uint64)(1000*speed)) {
 		if (gamestate == IN_PROGRESS) {
-			// determine next position in grid
+			/* Determine next position in grid. */
+			/* Likely nextPos will be a var. in tree/list struct in future iterations, along with prevPos. */
 			int nextPos[2];
 			nextPos[0] = headPos[0];
 			nextPos[1] = headPos[1];
@@ -217,7 +228,8 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 					break;
 			}
 
-			// Decrement tail unit lifespans. destroy tail end once lifespan runs out (based on score)
+			/* Decrement tail unit lifespans. Destroy tail end once lifespan runs out (based on score). */
+			/* Future iterations should create tree or list data structures for tail tiles. This works for now but not scalable. */
 			for (i=0; i<GRID_X; i++) {
 				for (j=0; j<GRID_Y; j++) {
 					if (grid[i][j].state == TAIL) {
@@ -231,7 +243,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 			}
 
 
-			// detect collisions
+			/* Handle collisions. */
 			switch (grid[nextPos[0]][nextPos[1]].state) {
 				case TAIL:
 					resetGame();
@@ -265,7 +277,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 	SDL_SetRenderDrawColor(renderer, 0x22, 0x1F, 0x23, SDL_ALPHA_OPAQUE);
 	SDL_RenderClear(renderer);
 
-	// Draw egg, head, and tail tiles
+	/* Draw egg, head, and tail tiles. */
 	for (i=0; i<GRID_X; i++) {
 		for (j=0; j<GRID_Y; j++) {
 			switch (grid[i][j].state) {
